@@ -34,17 +34,17 @@ final class WakeGameTests: XCTestCase {
     private func solve(_ wake: inout WakeSession) throws -> PuzzleSubmission {
         let game = try XCTUnwrap(wake.game)
         switch game.kind {
-        case .word: return wake.submit(.guess(game.wordAnswer))
+        case .word: return wake.submit(.guess(game.wordAnswer), now: wake.plan.targetDate)
         case .groups:
             var result = PuzzleSubmission.ignored
             for group in game.groups where !game.solvedGroupIDs.contains(group.id) {
-                result = wake.submit(.group(group.words))
+                result = wake.submit(.group(group.words), now: wake.plan.targetDate)
             }
             return result
         case .crossword:
             var result = PuzzleSubmission.ignored
             for entry in game.crossword where game.crosswordAnswers[entry.id] == nil {
-                result = wake.submit(.crossword(entryID: entry.id, answer: entry.answer))
+                result = wake.submit(.crossword(entryID: entry.id, answer: entry.answer), now: wake.plan.targetDate)
             }
             return result
         }
@@ -140,12 +140,12 @@ final class WakeGameTests: XCTestCase {
     func testGamesRequireBeginAndCannotUseLegacyMemoryBypass() throws {
         for kind in WakeGameKind.allCases {
             var wake = try session(kind)
-            XCTAssertEqual(wake.submit(.hint), .ignored)
-            XCTAssertTrue(wake.beginChallenge())
+            XCTAssertEqual(wake.submit(.hint, now: wake.plan.targetDate), .ignored)
+            XCTAssertTrue(wake.beginChallenge(now: wake.plan.targetDate))
             XCTAssertEqual(wake.state, .answering)
-            XCTAssertFalse(wake.beginChallenge())
+            XCTAssertFalse(wake.beginChallenge(now: wake.plan.targetDate))
             XCTAssertFalse(wake.hideSequence())
-            XCTAssertEqual(wake.submit(MemoryToken.sun), .ignored)
+            XCTAssertEqual(wake.submit(MemoryToken.sun, now: wake.plan.targetDate), .ignored)
             XCTAssertEqual(wake.correctTapCount, 0)
             XCTAssertFalse(wake.isTerminal)
         }
@@ -153,9 +153,9 @@ final class WakeGameTests: XCTestCase {
 
     func testWordRejectsInvalidInputsWithoutConsumingAGuess() throws {
         var wake = try session(.word)
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         for input in ["", " ", "FOUR", "SIXLET", "12345", "A BCD", "AB-CD", "ABCD🌞", String(repeating: "A", count: 200)] {
-            XCTAssertEqual(wake.submit(.guess(input)), .incorrect)
+            XCTAssertEqual(wake.submit(.guess(input), now: wake.plan.targetDate), .incorrect)
             XCTAssertEqual(wake.game?.guesses, [])
             XCTAssertFalse(wake.game?.feedback.isEmpty ?? true)
         }
@@ -164,34 +164,34 @@ final class WakeGameTests: XCTestCase {
 
     func testWordAllowsUnlimitedWrongGuessesThenCaseInsensitiveCompletion() throws {
         var wake = try session(.word)
-        wake.beginChallenge()
-        for _ in 0..<25 { XCTAssertEqual(wake.submit(.guess("CRANE")), .incorrect) }
+        wake.beginChallenge(now: wake.plan.targetDate)
+        for _ in 0..<25 { XCTAssertEqual(wake.submit(.guess("CRANE"), now: wake.plan.targetDate), .incorrect) }
         XCTAssertEqual(wake.game?.guesses.count, 25)
         XCTAssertEqual(wake.state, .answering)
         XCTAssertEqual(wake.alarmIDsToCancel, [])
         let answer = try XCTUnwrap(wake.game?.wordAnswer)
-        XCTAssertEqual(wake.submit(.guess(" \(answer.lowercased())\n")), .completed(cancelAlarmIDs: wake.plan.eventIDs))
+        XCTAssertEqual(wake.submit(.guess(" \(answer.lowercased())\n"), now: wake.plan.targetDate), .completed(cancelAlarmIDs: wake.plan.eventIDs))
         XCTAssertTrue(wake.game?.isSolved == true)
     }
 
     func testGroupsRejectDuplicatesUnknownTilesAndPartialOverlap() throws {
         var wake = try session(.groups)
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         let game = try XCTUnwrap(wake.game)
         let first = game.groups[0]
         let second = game.groups[1]
         XCTAssertEqual(Set(game.tileWords), Set(game.groups.flatMap(\.words)))
-        XCTAssertEqual(wake.submit(.group(Array(repeating: first.words[0], count: 4))), .incorrect)
-        XCTAssertEqual(wake.submit(.group([first.words[0], first.words[0].lowercased(), first.words[1], first.words[2]])), .incorrect)
-        XCTAssertEqual(wake.submit(.group(Array(first.words.prefix(3)))), .incorrect)
-        XCTAssertEqual(wake.submit(.group([first.words[0], first.words[1], first.words[2], "UNKNOWN"])), .incorrect)
-        XCTAssertEqual(wake.submit(.group([first.words[0], first.words[1], first.words[2], second.words[0]])), .incorrect)
+        XCTAssertEqual(wake.submit(.group(Array(repeating: first.words[0], count: 4)), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.group([first.words[0], first.words[0].lowercased(), first.words[1], first.words[2]]), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.group(Array(first.words.prefix(3))), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.group([first.words[0], first.words[1], first.words[2], "UNKNOWN"]), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.group([first.words[0], first.words[1], first.words[2], second.words[0]]), now: wake.plan.targetDate), .incorrect)
         XCTAssertEqual(wake.game?.solvedGroupIDs, [])
-        XCTAssertEqual(wake.submit(.group(first.words.reversed().map { " \($0.lowercased()) " })), .progress(remaining: 1))
+        XCTAssertEqual(wake.submit(.group(first.words.reversed().map { " \($0.lowercased()) " }), now: wake.plan.targetDate), .progress(remaining: 1))
         XCTAssertEqual(wake.game?.solvedGroupIDs, [first.id])
-        XCTAssertEqual(wake.submit(.group(first.words)), .incorrect)
-        XCTAssertEqual(wake.submit(.group([first.words[0], second.words[0], second.words[1], second.words[2]])), .incorrect)
-        XCTAssertEqual(wake.submit(.group(second.words)), .completed(cancelAlarmIDs: wake.plan.eventIDs))
+        XCTAssertEqual(wake.submit(.group(first.words), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.group([first.words[0], second.words[0], second.words[1], second.words[2]]), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.group(second.words), now: wake.plan.targetDate), .completed(cancelAlarmIDs: wake.plan.eventIDs))
     }
 
     func testEveryMiniHasConnectedMatchingIntersections() {
@@ -223,28 +223,28 @@ final class WakeGameTests: XCTestCase {
 
     func testCrosswordKeepsOnlyCorrectAnswersAndCompletesOnLastEntry() throws {
         var wake = try session(.crossword)
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         let entries = try XCTUnwrap(wake.game?.crossword)
-        XCTAssertEqual(wake.submit(.crossword(entryID: "missing", answer: "AAA")), .ignored)
-        XCTAssertEqual(wake.submit(.crossword(entryID: entries[0].id, answer: "")), .incorrect)
-        XCTAssertEqual(wake.submit(.crossword(entryID: entries[0].id, answer: "ZZZ")), .incorrect)
+        XCTAssertEqual(wake.submit(.crossword(entryID: "missing", answer: "AAA"), now: wake.plan.targetDate), .ignored)
+        XCTAssertEqual(wake.submit(.crossword(entryID: entries[0].id, answer: ""), now: wake.plan.targetDate), .incorrect)
+        XCTAssertEqual(wake.submit(.crossword(entryID: entries[0].id, answer: "ZZZ"), now: wake.plan.targetDate), .incorrect)
         XCTAssertEqual(wake.game?.crosswordAnswers, [:])
         for (index, entry) in entries.enumerated() {
             let expected: PuzzleSubmission = index == entries.count - 1
                 ? .completed(cancelAlarmIDs: wake.plan.eventIDs) : .progress(remaining: entries.count - index - 1)
-            XCTAssertEqual(wake.submit(.crossword(entryID: entry.id, answer: " \(entry.answer.lowercased()) ")), expected)
+            XCTAssertEqual(wake.submit(.crossword(entryID: entry.id, answer: " \(entry.answer.lowercased()) "), now: wake.plan.targetDate), expected)
             XCTAssertEqual(wake.game?.crosswordAnswers[entry.id], entry.answer)
-            XCTAssertEqual(wake.submit(.crossword(entryID: entry.id, answer: "ZZZ")), .ignored)
+            XCTAssertEqual(wake.submit(.crossword(entryID: entry.id, answer: "ZZZ"), now: wake.plan.targetDate), .ignored)
         }
     }
 
     func testHintsAreGradualPersistedAndNeverSilentlyComplete() throws {
         for kind in WakeGameKind.allCases {
             var wake = try session(kind)
-            wake.beginChallenge()
+            wake.beginChallenge(now: wake.plan.targetDate)
             var messages: [String] = []
             for level in 1...3 {
-                guard case .progress = wake.submit(.hint) else { return XCTFail("Hint should retain active progress") }
+                guard case .progress = wake.submit(.hint, now: wake.plan.targetDate) else { return XCTFail("Hint should retain active progress") }
                 XCTAssertEqual(wake.game?.hintLevel, level)
                 messages.append(try XCTUnwrap(wake.game?.feedback))
                 wake = try restored(wake)
@@ -254,7 +254,7 @@ final class WakeGameTests: XCTestCase {
                 XCTAssertEqual(wake.alarmIDsToCancel, [])
             }
             XCTAssertEqual(Set(messages).count, 3)
-            for _ in 0..<20 { _ = wake.submit(.hint) }
+            for _ in 0..<20 { _ = wake.submit(.hint, now: wake.plan.targetDate) }
             XCTAssertEqual(wake.game?.hintLevel, 3)
             XCTAssertFalse(wake.isTerminal)
             XCTAssertEqual(try solve(&wake), .completed(cancelAlarmIDs: wake.plan.eventIDs))
@@ -264,14 +264,14 @@ final class WakeGameTests: XCTestCase {
     func testAllProgressSurvivesRelaunchAndFinishingRetainsCancellationIntent() throws {
         for kind in WakeGameKind.allCases {
             var wake = try session(kind)
-            wake.beginChallenge()
-            wake.submit(.hint)
+            wake.beginChallenge(now: wake.plan.targetDate)
+            wake.submit(.hint, now: wake.plan.targetDate)
             let game = try XCTUnwrap(wake.game)
             switch kind {
-            case .word: wake.submit(.guess("CRANE"))
-            case .groups: wake.submit(.group(game.groups[0].words))
+            case .word: wake.submit(.guess("CRANE"), now: wake.plan.targetDate)
+            case .groups: wake.submit(.group(game.groups[0].words), now: wake.plan.targetDate)
             case .crossword:
-                wake.submit(.crossword(entryID: game.crossword[0].id, answer: game.crossword[0].answer))
+                wake.submit(.crossword(entryID: game.crossword[0].id, answer: game.crossword[0].answer), now: wake.plan.targetDate)
             }
             var copy: WakeSession = try restored(wake)
             XCTAssertEqual(copy, wake)
@@ -288,7 +288,7 @@ final class WakeGameTests: XCTestCase {
         for kind in WakeGameKind.allCases {
             for terminal in [WakeSessionState.completed, .cancelled, .emergencyExited] {
                 var wake = try session(kind)
-                wake.beginChallenge()
+                wake.beginChallenge(now: wake.plan.targetDate)
                 switch terminal {
                 case .completed: try solve(&wake)
                 case .cancelled: XCTAssertEqual(wake.cancel(), wake.plan.eventIDs)
@@ -297,10 +297,10 @@ final class WakeGameTests: XCTestCase {
                 }
                 let snapshot = wake
                 for action in [WakeGameAction.hint, .guess("APPLE"), .group([]), .crossword(entryID: "1A", answer: "ABC")] {
-                    XCTAssertEqual(wake.submit(action), .ignored)
+                    XCTAssertEqual(wake.submit(action, now: wake.plan.targetDate), .ignored)
                 }
-                XCTAssertEqual(wake.submit(MemoryToken.sun), .ignored)
-                XCTAssertFalse(wake.beginChallenge())
+                XCTAssertEqual(wake.submit(MemoryToken.sun, now: wake.plan.targetDate), .ignored)
+                XCTAssertFalse(wake.beginChallenge(now: wake.plan.targetDate))
                 XCTAssertFalse(wake.hideSequence())
                 XCTAssertEqual(wake.cancel(), [])
                 XCTAssertEqual(wake.emergencyExit(), [])
@@ -314,7 +314,7 @@ final class WakeGameTests: XCTestCase {
         for kind in WakeGameKind.allCases {
             for hasBegun in [false, true] {
                 var wake = try session(kind)
-                if hasBegun { wake.beginChallenge(); wake.submit(.hint) }
+                if hasBegun { wake.beginChallenge(now: wake.plan.targetDate); wake.submit(.hint, now: wake.plan.targetDate) }
                 XCTAssertEqual(wake.emergencyExit(), wake.plan.eventIDs)
                 let copy: WakeSession = try restored(wake)
                 XCTAssertEqual(copy.state, .emergencyExited)
@@ -325,27 +325,27 @@ final class WakeGameTests: XCTestCase {
 
     func testUnrelatedStyleActionsDoNotChangeProgressOrFeedback() throws {
         var wake = try session(.word)
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         let snapshot = wake
-        XCTAssertEqual(wake.submit(.group(["A", "B", "C", "D"])), .ignored)
-        XCTAssertEqual(wake.submit(.crossword(entryID: "1A", answer: "CAT")), .ignored)
+        XCTAssertEqual(wake.submit(.group(["A", "B", "C", "D"]), now: wake.plan.targetDate), .ignored)
+        XCTAssertEqual(wake.submit(.crossword(entryID: "1A", answer: "CAT"), now: wake.plan.targetDate), .ignored)
         XCTAssertEqual(wake, snapshot)
     }
 
     func testOldMemoryJSONWithoutGameStillRestoresAndFinishes() throws {
         let pattern = try MemoryChallenge(sequence: [.sun, .leaf, .moon])
         var legacy = WakeSession(plan: try plan(), challenge: pattern)
-        legacy.beginChallenge()
+        legacy.beginChallenge(now: legacy.plan.targetDate)
         legacy.hideSequence()
-        legacy.submit(.sun)
+        legacy.submit(.sun, now: legacy.plan.targetDate)
         let data = try editedJSON(legacy) { $0.removeValue(forKey: "game") }
         var copy = try JSONDecoder().decode(WakeSession.self, from: data)
         XCTAssertNil(copy.game)
         XCTAssertEqual(copy.challenge, pattern)
         XCTAssertEqual(copy.correctTapCount, 1)
-        XCTAssertEqual(copy.submit(.hint), .ignored)
-        XCTAssertEqual(copy.submit(.leaf), .progress(remaining: 1))
-        XCTAssertEqual(copy.submit(.moon), .completed(cancelAlarmIDs: legacy.plan.eventIDs))
+        XCTAssertEqual(copy.submit(.hint, now: copy.plan.targetDate), .ignored)
+        XCTAssertEqual(copy.submit(.leaf, now: copy.plan.targetDate), .progress(remaining: 1))
+        XCTAssertEqual(copy.submit(.moon, now: copy.plan.targetDate), .completed(cancelAlarmIDs: legacy.plan.eventIDs))
         XCTAssertEqual(try restored(copy).alarmIDsToCancel, legacy.plan.eventIDs)
     }
 
@@ -356,7 +356,7 @@ final class WakeGameTests: XCTestCase {
             XCTAssertThrowsError(try JSONDecoder().decode(WakeSession.self, from: corrupt))
         }
         var wake = try session(.word)
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         try solve(&wake)
         let corrupt = try editedJSON(wake) { $0["state"] = "answering" }
         XCTAssertThrowsError(try JSONDecoder().decode(WakeSession.self, from: corrupt))
@@ -444,8 +444,8 @@ final class WakeGameTests: XCTestCase {
         let corruptTapCount = try editedJSON(wake) { $0["correctTapCount"] = 1 }
         XCTAssertThrowsError(try JSONDecoder().decode(WakeSession.self, from: corruptTapCount))
         var active = wake
-        active.beginChallenge()
-        active.submit(.hint)
+        active.beginChallenge(now: active.plan.targetDate)
+        active.submit(.hint, now: active.plan.targetDate)
         let corruptArmed = try editedJSON(active) { $0["state"] = "armed" }
         XCTAssertThrowsError(try JSONDecoder().decode(WakeSession.self, from: corruptArmed))
     }

@@ -16,21 +16,21 @@ final class WakeSessionTests: XCTestCase {
 
     func testCannotAnswerBeforeSequenceIsHidden() throws {
         var wake = try session()
-        XCTAssertEqual(wake.submit(.sun), .ignored)
-        XCTAssertTrue(wake.beginChallenge())
-        XCTAssertEqual(wake.submit(.sun), .ignored)
+        XCTAssertEqual(wake.submit(.sun, now: wake.plan.targetDate), .ignored)
+        XCTAssertTrue(wake.beginChallenge(now: wake.plan.targetDate))
+        XCTAssertEqual(wake.submit(.sun, now: wake.plan.targetDate), .ignored)
         XCTAssertEqual(wake.correctTapCount, 0)
         XCTAssertTrue(wake.hideSequence())
-        XCTAssertEqual(wake.submit(.sun), .progress(remaining: 2))
+        XCTAssertEqual(wake.submit(.sun, now: wake.plan.targetDate), .progress(remaining: 2))
     }
 
     func testCorrectSequenceCompletesAndReturnsEveryCancellationID() throws {
         var wake = try session()
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         wake.hideSequence()
-        XCTAssertEqual(wake.submit(.sun), .progress(remaining: 2))
-        XCTAssertEqual(wake.submit(.leaf), .progress(remaining: 1))
-        XCTAssertEqual(wake.submit(.moon), .completed(cancelAlarmIDs: wake.plan.eventIDs))
+        XCTAssertEqual(wake.submit(.sun, now: wake.plan.targetDate), .progress(remaining: 2))
+        XCTAssertEqual(wake.submit(.leaf, now: wake.plan.targetDate), .progress(remaining: 1))
+        XCTAssertEqual(wake.submit(.moon, now: wake.plan.targetDate), .completed(cancelAlarmIDs: wake.plan.eventIDs))
         XCTAssertEqual(wake.state, .completed)
         XCTAssertTrue(wake.isTerminal)
         XCTAssertEqual(wake.alarmIDsToCancel, wake.plan.eventIDs)
@@ -38,24 +38,24 @@ final class WakeSessionTests: XCTestCase {
 
     func testWrongTapResetsForAnotherLookWithoutEscalation() throws {
         var wake = try session()
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         wake.hideSequence()
-        wake.submit(.sun)
-        XCTAssertEqual(wake.submit(.wave), .incorrect)
+        wake.submit(.sun, now: wake.plan.targetDate)
+        XCTAssertEqual(wake.submit(.wave, now: wake.plan.targetDate), .incorrect)
         XCTAssertEqual(wake.state, .memorizing)
         XCTAssertEqual(wake.correctTapCount, 0)
         XCTAssertFalse(wake.isTerminal)
         XCTAssertTrue(wake.hideSequence())
-        XCTAssertEqual(wake.submit(.sun), .progress(remaining: 2))
+        XCTAssertEqual(wake.submit(.sun, now: wake.plan.targetDate), .progress(remaining: 2))
     }
 
     func testCancelBeforeChallengeReturnsIDsAndCannotRearm() throws {
         var wake = try session()
         XCTAssertEqual(wake.cancel(), wake.plan.eventIDs)
         XCTAssertEqual(wake.state, .cancelled)
-        XCTAssertFalse(wake.beginChallenge())
+        XCTAssertFalse(wake.beginChallenge(now: wake.plan.targetDate))
         XCTAssertFalse(wake.hideSequence())
-        XCTAssertEqual(wake.submit(.sun), .ignored)
+        XCTAssertEqual(wake.submit(.sun, now: wake.plan.targetDate), .ignored)
         XCTAssertEqual(wake.cancel(), [])
         XCTAssertEqual(wake.emergencyExit(), [])
         XCTAssertEqual(wake.state, .cancelled)
@@ -64,41 +64,41 @@ final class WakeSessionTests: XCTestCase {
     func testEmergencyExitAvailableBeforeOrDuringPuzzle() throws {
         for stage in 0...2 {
             var wake = try session()
-            if stage >= 1 { wake.beginChallenge() }
-            if stage >= 2 { wake.hideSequence(); wake.submit(.sun) }
+            if stage >= 1 { wake.beginChallenge(now: wake.plan.targetDate) }
+            if stage >= 2 { wake.hideSequence(); wake.submit(.sun, now: wake.plan.targetDate) }
             XCTAssertEqual(wake.emergencyExit(), wake.plan.eventIDs)
             XCTAssertEqual(wake.state, .emergencyExited)
             XCTAssertTrue(wake.isTerminal)
-            XCTAssertEqual(wake.submit(.leaf), .ignored)
-            XCTAssertFalse(wake.beginChallenge())
+            XCTAssertEqual(wake.submit(.leaf, now: wake.plan.targetDate), .ignored)
+            XCTAssertFalse(wake.beginChallenge(now: wake.plan.targetDate))
         }
     }
 
     func testCompleteSessionCannotBeRepeatedOrRearmed() throws {
         var wake = try session()
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         wake.hideSequence()
-        wake.submit(.sun)
-        wake.submit(.leaf)
-        wake.submit(.moon)
-        XCTAssertFalse(wake.beginChallenge())
+        wake.submit(.sun, now: wake.plan.targetDate)
+        wake.submit(.leaf, now: wake.plan.targetDate)
+        wake.submit(.moon, now: wake.plan.targetDate)
+        XCTAssertFalse(wake.beginChallenge(now: wake.plan.targetDate))
         XCTAssertFalse(wake.hideSequence())
-        XCTAssertEqual(wake.submit(.moon), .ignored)
+        XCTAssertEqual(wake.submit(.moon, now: wake.plan.targetDate), .ignored)
         XCTAssertEqual(wake.cancel(), [])
         XCTAssertEqual(wake.state, .completed)
     }
 
     func testProgressAndCancellationIntentSurviveRelaunch() throws {
         var wake = try session()
-        wake.beginChallenge()
+        wake.beginChallenge(now: wake.plan.targetDate)
         wake.hideSequence()
-        wake.submit(.sun)
+        wake.submit(.sun, now: wake.plan.targetDate)
         var restored = try JSONDecoder().decode(
             WakeSession.self, from: JSONEncoder().encode(wake)
         )
         XCTAssertEqual(restored, wake)
         XCTAssertEqual(restored.correctTapCount, 1)
-        XCTAssertEqual(restored.submit(.leaf), .progress(remaining: 1))
+        XCTAssertEqual(restored.submit(.leaf, now: restored.plan.targetDate), .progress(remaining: 1))
         restored.emergencyExit()
         let terminal = try JSONDecoder().decode(
             WakeSession.self, from: JSONEncoder().encode(restored)

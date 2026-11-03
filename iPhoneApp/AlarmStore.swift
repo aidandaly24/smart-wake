@@ -46,8 +46,18 @@ final class AlarmStore: ObservableObject {
 
     func markBedtime() { bedtime = Date() }
 
-    func arm(manualTime: Date?, smart: Bool, gameKind: WakeGameKind? = nil) async {
-        guard !busy, plan == nil else { return }
+    func arm(manualTime: Date?, smart: Bool, gameKind: WakeGameKind? = nil,
+             replacingSessionID: UUID? = nil) async {
+        guard !busy else { return }
+        if let replacingSessionID {
+            guard plan?.id == replacingSessionID else {
+                status = "The saved alarm changed. Review it before updating."
+                return
+            }
+        } else if plan != nil {
+            status = "Choose Update wake-up to replace the saved alarm."
+            return
+        }
         busy = true
         cancellationRequested = false
         defer {
@@ -57,28 +67,57 @@ final class AlarmStore: ObservableObject {
                 cancelAll()
             }
         }
+        var replacementStarted = false
+        var oldAlarmRemoved = false
         do {
-            // Never overwrite a pending session or orphaned system alarm.
-            guard try manager.alarms.isEmpty else {
+            // A confirmed update may replace the saved session. Unowned/orphaned
+            // alarms still require the explicit emergency-stop recovery flow.
+            let existingAlarms = try manager.alarms
+            guard replacingSessionID != nil || existingAlarms.isEmpty else {
                 status = "Existing alarms remain. Use emergency stop before replacing them."
                 return
             }
-            let authorization = try await manager.requestAuthorization()
-            guard authorization == .authorized else {
-                status = "Alarm permission is off. Nothing was armed. Enable Smart Wake alarms in Settings."
-                return
-            }
-            guard !cancellationRequested else { throw ArmError.cancelled }
             let mode: WakeMode
             if smart { mode = .smart }
             else {
                 let parts = Calendar.current.dateComponents([.hour, .minute], from: manualTime ?? Date())
                 mode = .manual(try ClockTime(hour: parts.hour ?? 7, minute: parts.minute ?? 0))
             }
+            let planningTimeZone = TimeZone.current
+            let authorization = try await manager.requestAuthorization()
+            guard authorization == .authorized else {
+                status = replacingSessionID == nil
+                    ? "Alarm permission is off. Nothing was armed. Enable Smart Wake alarms in Settings."
+                    : "Alarm permission is off. The existing session was not replaced, but its alarms may not work. Enable permission and keep a separate backup."
+                return
+            }
+            guard !cancellationRequested else { throw ArmError.cancelled }
             let planner = try WakePlanner(retryLimit: 10)
-            let proposed = try planner.makePlan(mode: mode, now: Date(), timeZone: .current,
+            let proposed = try planner.makePlan(mode: mode, now: Date(), timeZone: planningTimeZone,
                                                 bedtime: effectiveBedtime,
                                                 history: watch.history, authorization: .authorized)
+            if let replacingSessionID {
+                guard !cancellationRequested else { throw ArmError.cancelled }
+                guard var oldSession = wakeSession, oldSession.plan.id == replacingSessionID else {
+                    throw ArmError.sessionChanged
+                }
+                guard proposed.events.allSatisfy({ $0.fireDate > Date() }) else { throw ArmError.timePassed }
+                // One operation owns busy/cancellationRequested throughout. Do not
+                // call cancelAll() here: while busy it only requests deferred stop.
+                _ = oldSession.cancel()
+                try persist(oldSession)
+                wakeSession = oldSession
+                replacementStarted = true
+                for alarm in try manager.alarms { try manager.cancel(id: alarm.id) }
+                let remaining = try manager.alarms
+                scheduledCount = remaining.count
+                guard remaining.isEmpty else { throw ArmError.cancellationIncomplete }
+                try clearPersistence()
+                wakeSession = nil
+                showPuzzle = false
+                oldAlarmRemoved = true
+            }
+            guard !cancellationRequested else { throw ArmError.cancelled }
             // Write the complete ID ledger BEFORE making any external schedule call.
             // A crash mid-arm can then recover/cancel every possibly scheduled alarm.
             let session = WakeSession(plan: proposed, gameKind: gameKind)
@@ -126,20 +165,30 @@ final class AlarmStore: ObservableObject {
                     status = "Some alarms could not be verified. Do not rely on this session; use emergency stop, re-arm, and keep a separate backup."
                 }
             } catch {
+                let updateWarning = oldAlarmRemoved ? "The previous alarm was removed. " : ""
                 if let alarms = try? manager.alarms {
                     let registered = Set(alarms.map(\.id))
                     scheduledCount = alarms.count
                     let fallbackPresent = proposed.events.contains {
                         $0.kind == .fallback && registered.contains($0.id)
                     }
-                    status = "Only \(alarms.count) alarms are registered; the full plan did not arm. "
+                    status = updateWarning + "Only \(alarms.count) alarms are registered; the full plan did not arm. "
                         + (fallbackPresent ? "The fallback is registered. " : "Fallback is not confirmed. ")
                         + "Do not rely on this session. Use emergency stop and keep a separate backup. \(error.localizedDescription)"
                 } else {
-                    status = "Could not verify which alarms are registered. Do not rely on this session. Use emergency stop and keep a separate backup. \(error.localizedDescription)"
+                    status = updateWarning + "Could not verify which alarms are registered. Do not rely on this session. Use emergency stop and keep a separate backup. \(error.localizedDescription)"
                 }
             }
-        } catch { status = "Could not arm: \(error.localizedDescription)" }
+        } catch {
+            if oldAlarmRemoved {
+                status = "The previous alarm was removed, but its replacement was not armed. Set a backup alarm now. \(error.localizedDescription)"
+            } else if replacementStarted {
+                status = "Could not finish replacing the alarm. Some previous alarms may remain; no replacement was scheduled. Use emergency stop and keep a separate backup. \(error.localizedDescription)"
+            } else {
+                status = "Could not arm: \(error.localizedDescription)"
+                if replacingSessionID != nil { status += " The existing session was not replaced." }
+            }
+        }
     }
 
     func refresh() {
@@ -184,8 +233,14 @@ final class AlarmStore: ObservableObject {
     func beginPuzzle() {
         guard !busy else { return }
         guard var session = wakeSession else { return }
-        _ = session.beginChallenge()
-        saveProgress(session)
+        let now = Date()
+        guard now >= session.plan.targetDate else {
+            status = "The wake-up game unlocks at \(session.plan.targetDate.formatted(date: .omitted, time: .shortened)). Your alarms remain armed."
+            showPuzzle = false
+            return
+        }
+        _ = session.beginChallenge(now: now)
+        guard saveProgress(session) else { return }
         showPuzzle = true
     }
 
@@ -224,7 +279,14 @@ final class AlarmStore: ObservableObject {
         }
     }
 
-    func finishPuzzle() { cancelAll(completed: true) }
+    func finishPuzzle() {
+        guard let session = wakeSession, session.state == .completed,
+              Date() >= session.plan.targetDate else {
+            status = "A future alarm cannot be cleared by playing early. Use Update wake-up or emergency stop if you want to change it."
+            return
+        }
+        cancelAll(completed: true)
+    }
 
     func cancelAll(completed: Bool = false) {
         if busy {
@@ -286,10 +348,14 @@ final class AlarmStore: ObservableObject {
     private enum ArmError: LocalizedError {
         case timePassed
         case cancelled
+        case sessionChanged
+        case cancellationIncomplete
         var errorDescription: String? {
             switch self {
             case .timePassed: return "The selected time passed during scheduling."
             case .cancelled: return "Arming was cancelled."
+            case .sessionChanged: return "The saved alarm changed during the update."
+            case .cancellationIncomplete: return "The previous alarms could not all be cancelled."
             }
         }
     }

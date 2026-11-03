@@ -5,6 +5,9 @@ struct HomeView: View {
     @ObservedObject var store: AlarmStore
     @State private var smart = false
     @State private var gameKind: WakeGameKind? = nil
+    @State private var hasLoadedDraft = false
+    @State private var showUpdateConfirmation = false
+    @State private var pendingUpdate: WakeUpEdit?
     @State private var manualTime = Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
 
     var body: some View {
@@ -19,10 +22,14 @@ struct HomeView: View {
                         Spacer()
                         Image(systemName: "sun.max.fill").font(.system(size: 42)).foregroundStyle(.mint)
                     }
+                    if store.plan != nil {
+                        Text("Edit below, then tap Update wake-up. Your current alarm stays armed while you make changes.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
                     Picker("Wake mode", selection: $smart) {
                         Text("Set a time").tag(false)
                         Text("Smart window").tag(true)
-                    }.pickerStyle(.segmented).disabled(store.plan != nil || store.busy)
+                    }.pickerStyle(.segmented).disabled(store.busy).accessibilityIdentifier("wakeModePicker")
 
                     Group {
                         if smart {
@@ -32,7 +39,7 @@ struct HomeView: View {
                                 Button { store.markBedtime() } label: {
                                     Label(store.bedtime == nil ? "I'm going to bed" : "Bedtime saved", systemImage: "moon.zzz.fill")
                                         .frame(maxWidth: .infinity)
-                                }.buttonStyle(.bordered)
+                                }.buttonStyle(.bordered).disabled(store.busy)
                                 if let bedtime = store.effectiveBedtime {
                                     Text("Bedtime: \(bedtime.formatted(date: .omitted, time: .shortened))").font(.footnote).foregroundStyle(.secondary)
                                 }
@@ -42,19 +49,19 @@ struct HomeView: View {
                         } else {
                             DatePicker("Wake-up time", selection: $manualTime, displayedComponents: .hourAndMinute)
                                 .datePickerStyle(.wheel).labelsHidden().frame(maxWidth: .infinity)
-                                .disabled(store.plan != nil || store.busy)
+                                .disabled(store.busy).accessibilityIdentifier("manualWakeTime")
                         }
                     }.padding(20).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24))
 
-                    if store.plan == nil {
+                    Group {
                         VStack(alignment: .leading, spacing: 8) {
                             Picker("Wake-up game", selection: $gameKind) {
                                 Text("Daily rotation").tag(Optional<WakeGameKind>.none)
                                 Text("Five-letter word").tag(Optional(WakeGameKind.word))
                                 Text("Find the groups").tag(Optional(WakeGameKind.groups))
                                 Text("Mini crossword").tag(Optional(WakeGameKind.crossword))
-                            }.disabled(store.busy)
-                            Text("Original, bite-size puzzles. Daily rotation cycles through all three, with hints and no attempt limit.")
+                            }.disabled(store.busy).accessibilityIdentifier("wakeGamePicker")
+                            Text("Daily rotation changes with the wake-up date. The same saved alarm keeps its puzzle and progress. Choose a different style here, then arm or update to change games.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
@@ -69,7 +76,20 @@ struct HomeView: View {
                             if let deadline = plan.latestWakeDate {
                                 Text("Latest fallback: \(deadline.formatted(date: .omitted, time: .shortened))").font(.subheadline)
                             }
-                            Button("Open wake-up game") { store.beginPuzzle() }.buttonStyle(.borderedProminent).disabled(store.busy)
+                            Text("Armed game: \(armedGameName)").font(.subheadline)
+                            Button("Update wake-up") {
+                                pendingUpdate = WakeUpEdit(sessionID: plan.id, manualTime: manualTime,
+                                                         smart: smart, gameKind: gameKind)
+                                showUpdateConfirmation = true
+                            }.buttonStyle(.borderedProminent).disabled(store.busy)
+                                .accessibilityIdentifier("updateWakeUp")
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                let unlocked = context.date >= plan.targetDate
+                                Button(unlocked ? "Open wake-up game" : "Game unlocks at \(plan.targetDate.formatted(date: .omitted, time: .shortened))") {
+                                    store.beginPuzzle()
+                                }.buttonStyle(.bordered).disabled(store.busy || !unlocked)
+                                    .accessibilityIdentifier("openWakeGame")
+                            }
                             DisclosureGroup("See every planned alarm") {
                                 ForEach(plan.events, id: \.id) { event in
                                     HStack {
@@ -103,7 +123,46 @@ struct HomeView: View {
             .background(Color(red: 0.035, green: 0.055, blue: 0.09))
             .navigationTitle("Smart Wake").navigationBarTitleDisplayMode(.inline)
             .fullScreenCover(isPresented: $store.showPuzzle) { PuzzleView(store: store) }
+            .onAppear(perform: loadSavedDraftOnce)
+            .alert("Replace your current wake-up?", isPresented: $showUpdateConfirmation, presenting: pendingUpdate) { edit in
+                Button("Keep current alarm", role: .cancel) { }
+                Button("Update wake-up", role: .destructive) {
+                    Task {
+                        await store.arm(manualTime: edit.manualTime, smart: edit.smart,
+                                        gameKind: edit.gameKind, replacingSessionID: edit.sessionID)
+                    }
+                }
+            } message: { edit in
+                Text("This stops the current alarms and arms \(edit.smart ? "the 6:30–8:15 smart window" : edit.manualTime.formatted(date: .omitted, time: .shortened)) with your selected game. If replacement fails, you may have no alarm. Keep a separate trusted backup.")
+            }
         }
+    }
+
+    private struct WakeUpEdit {
+        let sessionID: UUID
+        let manualTime: Date
+        let smart: Bool
+        let gameKind: WakeGameKind?
+    }
+
+    private var armedGameName: String {
+        store.wakeSession?.game?.title ?? "Memory pattern (saved earlier session)"
+    }
+
+    private func loadSavedDraftOnce() {
+        guard !hasLoadedDraft else { return }
+        hasLoadedDraft = true
+        guard let session = store.wakeSession else { return }
+        switch session.plan.mode {
+        case .smart: smart = true
+        case .manual(let clock):
+            smart = false
+            manualTime = Calendar.current.date(bySettingHour: clock.hour, minute: clock.minute,
+                                               second: 0, of: Date()) ?? manualTime
+        }
+        // Old saves do not record whether the style originally came from Daily
+        // rotation. Show its concrete saved style rather than inventing that choice.
+        gameKind = session.game?.kind
     }
 
     private func planningExplanation(_ plan: WakePlan) -> String {

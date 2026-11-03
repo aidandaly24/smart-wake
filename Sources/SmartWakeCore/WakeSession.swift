@@ -120,9 +120,16 @@ public struct WakeSession: Codable, Equatable, Sendable {
     /// Remains available after persistence/relaunch for idempotent OS cleanup.
     public var alarmIDsToCancel: [UUID] { isTerminal ? plan.eventIDs : [] }
 
+    /// A challenge may start or resume only once its scheduled wake time arrives.
+    /// Check on every action too: restored progress or a clock adjustment must not
+    /// let a puzzle complete early and cancel alarms that have not fired yet.
+    public func canPlay(at date: Date) -> Bool {
+        !isTerminal && date.timeIntervalSinceReferenceDate.isFinite && date >= plan.targetDate
+    }
+
     @discardableResult
-    public mutating func beginChallenge() -> Bool {
-        guard state == .armed else { return false }
+    public mutating func beginChallenge(now: Date = Date()) -> Bool {
+        guard canPlay(at: now), state == .armed else { return false }
         state = game == nil ? .memorizing : .answering
         return true
     }
@@ -135,8 +142,8 @@ public struct WakeSession: Codable, Equatable, Sendable {
     }
 
     @discardableResult
-    public mutating func submit(_ token: MemoryToken) -> PuzzleSubmission {
-        guard game == nil, state == .answering,
+    public mutating func submit(_ token: MemoryToken, now: Date = Date()) -> PuzzleSubmission {
+        guard canPlay(at: now), game == nil, state == .answering,
               challenge.sequence.indices.contains(correctTapCount) else { return .ignored }
         guard token == challenge.sequence[correctTapCount] else {
             correctTapCount = 0
@@ -152,8 +159,8 @@ public struct WakeSession: Codable, Equatable, Sendable {
     }
 
     @discardableResult
-    public mutating func submit(_ action: WakeGameAction) -> PuzzleSubmission {
-        guard state == .answering, var activeGame = game else { return .ignored }
+    public mutating func submit(_ action: WakeGameAction, now: Date = Date()) -> PuzzleSubmission {
+        guard canPlay(at: now), state == .answering, var activeGame = game else { return .ignored }
         let result = activeGame.apply(action)
         game = activeGame
         switch result {
