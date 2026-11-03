@@ -36,3 +36,13 @@ Repository visibility/publication is a separate decision from keeping personal h
 - Source review checked game-state validation, legacy memory-session migration, completion-before-cancellation persistence, emergency exit, and the authorized fallback-follow-up changes. Fixed clue-selection loss after a rejected answer and a redundant initial word hint.
 - `swift test` was attempted again and could not launch because Swift is absent. All 64 XCTest methods remain unexecuted here. No native asset compilation, UI rendering or device installation was performed by this cloud update.
 - The user reported an existing device alarm ringing; that is not validation of this new source update or all its follow-ups. Existing sessions are not silently rescheduled. Stop and re-arm after a verified update to get the new games and ten follow-ups after the fallback.
+
+## First native CI build (2026-11-03 06:26 UTC)
+
+GitHub Actions run [41589725282](https://github.com/aidandaly24/smart-wake/actions/runs/41589725282) compiled both the iPhone app with embedded Watch and the standalone Watch simulator app successfully using Xcode 26.6 (17F113). This validates compilation and asset processing, not physical-device alarm delivery. The portable Swift test target exposed a pre-existing mixed numeric-array type-inference error; it was corrected with an explicit `[TimeInterval]` fixture type and the full suite passed in the next run.
+
+## Portable suite verified (2026-11-03 06:27 UTC)
+
+At source commit `a55d526ddaad9e15747d6aa7c8c470be880da57c`, [run 41589929242](https://github.com/aidandaly24/smart-wake/actions/runs/41589929242) executed all 64 XCTest methods with zero failures: 23 game tests, 32 planner tests, and nine legacy session tests. This supersedes the earlier “written, not executed” checkpoint above. The independent catalog and structural checks remain additional checks, not substitutes for these tests.
+
+The same run also completed both Xcode simulator build jobs successfully. No signing, device installation, live HealthKit access, gameplay UI automation or overnight reliability test is implied by those successes.

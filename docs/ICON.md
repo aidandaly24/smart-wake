@@ -13,6 +13,6 @@ Do not replace `project.pbxproj` or regenerate the user's existing project just 
 3. In each target's General settings, choose `SmartWakeIcon` as the App Icon source. This sets `ASSETCATALOG_COMPILER_APPICON_NAME` without touching signing.
 4. Verify each catalog appears once in that target's Copy Bundle Resources phase. Build and run each scheme, then inspect the installed icon on the phone and Watch. If a different local icon is already configured, reconcile that change instead of overwriting it silently.
 
-This cloud checkpoint has not run `actool` or a native build. Actual asset compilation and installed-icon rendering require Xcode.
+Both icon catalogs compiled successfully in the Xcode 26.6 CI simulator builds. Installed-icon rendering on the actual iPhone and Watch still needs visual inspection.
 
 Reference: [Apple: Configuring your app icon using an asset catalog](https://developer.apple.com/documentation/xcode/configuring-your-app-icon).

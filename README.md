@@ -8,7 +8,7 @@
 
 A native iPhone + Apple Watch prototype: choose a wake-up time, play a short original word, grouping or crossword game, and cancel the remaining reminders when you finish.
 
-**Prototype, not yet device-validated. Keep a separate trusted alarm.** This source snapshot does not prove overnight reliability or successful Apple SDK compilation.
+**Build-checked prototype. Keep a separate trusted alarm.** The portable suite passes 64 tests, and both iPhone/Watch simulator builds have passed with Xcode 26.6. These checks do not establish physical-device or overnight alarm reliability. See [CI results](https://github.com/aidandaly24/smart-wake/actions) and [validation details](docs/VALIDATION.md).
 
 <p align="center">
   <img src="docs/assets/smart-window-preview.png" alt="AI-edited preview of the earlier Smart Wake smart-window screen" width="720">

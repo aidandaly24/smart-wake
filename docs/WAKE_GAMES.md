@@ -21,4 +21,4 @@ All words, group themes and clues are an original bundled starter collection, no
 
 Run `swift test` from the project folder. Then compile the iPhone and Watch schemes using the installed SDKs. Test each style through the pre-alarm game picker, including wrong/duplicate input, hint use, relaunch midway, final completion, and an emergency stop before completion. Confirm that cancellation failure does not claim that alarms stopped.
 
-The cloud workspace has no Swift or Apple SDK toolchain. Structural checks and source review are not proof of native compilation or device behavior.
+The local cloud workspace has no Swift or Apple SDK toolchain, but GitHub Actions now runs both: all 64 portable tests pass and native Xcode simulator compilation has succeeded. UI interaction and physical-device behavior still need testing.
