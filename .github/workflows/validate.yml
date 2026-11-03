@@ -1,0 +1,27 @@
+name: Validate prototype
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+  native-build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify available SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Validate project structure
+        run: python3 scripts/validate_repository.py
+      - name: Compile iPhone and embedded Watch simulator apps
+        run: xcodebuild -project SmartWake.xcodeproj -scheme SmartWake -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Compile Watch simulator app
+        run: xcodebuild -project SmartWake.xcodeproj -scheme SmartWakeWatch -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO build

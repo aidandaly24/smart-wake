@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Smart Wake</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>WKApplication</key>
+    <true/>
+    <key>WKCompanionAppBundleIdentifier</key>
+    <string>$(COMPANION_APP_BUNDLE_IDENTIFIER)</string>
+    <key>WKRunsIndependentlyOfCompanionApp</key>
+    <false/>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Smart Wake reads your last 14 days of sleep history to summarize past sleep on your devices. It does not detect live sleep stages. Nothing is sent to a server.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>Smart Wake records watch motion for a duration you choose and summarizes it afterward on your watch. Only aggregate values are sent to your paired iPhone when you tap Send summary.</string>
+</dict>
+</plist>

@@ -1,0 +1,73 @@
+{
+  "synthetic": true,
+  "description": "Invented inputs and expected absolute dates; not personal sleep data.",
+  "cases": [
+    {
+      "id": "manual_after_midnight",
+      "mode": "manual",
+      "timeZone": "UTC",
+      "now": "2026-11-02T23:55:00Z",
+      "clockTime": "00:05",
+      "expectedTarget": "2026-11-03T00:05:00Z"
+    },
+    {
+      "id": "manual_spring_gap",
+      "mode": "manual",
+      "timeZone": "America/New_York",
+      "now": "2026-03-08T05:00:00Z",
+      "clockTime": "02:30",
+      "expectedTarget": "2026-03-08T07:00:00Z",
+      "expectedLocalTarget": "2026-03-08T03:00:00-04:00"
+    },
+    {
+      "id": "manual_autumn_first_occurrence",
+      "mode": "manual",
+      "timeZone": "America/New_York",
+      "now": "2026-11-01T04:00:00Z",
+      "clockTime": "01:30",
+      "expectedTarget": "2026-11-01T05:30:00Z",
+      "expectedLocalTarget": "2026-11-01T01:30:00-04:00"
+    },
+    {
+      "id": "manual_autumn_first_already_passed",
+      "mode": "manual",
+      "timeZone": "America/New_York",
+      "now": "2026-11-01T05:45:00Z",
+      "clockTime": "01:30",
+      "expectedTarget": "2026-11-02T06:30:00Z"
+    },
+    {
+      "id": "smart_missing_context",
+      "mode": "smart",
+      "timeZone": "UTC",
+      "now": "2026-11-02T23:00:00Z",
+      "bedtime": null,
+      "history": [],
+      "expectedTarget": "2026-11-03T08:15:00Z",
+      "expectedDeadline": "2026-11-03T08:15:00Z",
+      "expectedEventCount": 11
+    },
+    {
+      "id": "smart_clamped_retries",
+      "mode": "smart",
+      "timeZone": "UTC",
+      "now": "2026-11-03T00:12:00Z",
+      "bedtime": "2026-11-03T00:12:00Z",
+      "history": [],
+      "expectedTarget": "2026-11-03T08:12:00Z",
+      "expectedDeadline": "2026-11-03T08:15:00Z",
+      "expectedEventCount": 14
+    },
+    {
+      "id": "smart_spring_elapsed_duration",
+      "mode": "smart",
+      "timeZone": "America/New_York",
+      "now": "2026-03-08T04:00:00Z",
+      "bedtime": "2026-03-08T03:30:00Z",
+      "history": [],
+      "expectedTarget": "2026-03-08T11:30:00Z",
+      "expectedDeadline": "2026-03-08T12:15:00Z",
+      "expectedLocalTarget": "2026-03-08T07:30:00-04:00"
+    }
+  ]
+}
