@@ -6,12 +6,22 @@ struct PuzzleView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Image(systemName: "sunrise.fill").font(.system(size: 40)).foregroundStyle(.mint)
-                Text("Morning, brain.").font(.largeTitle.bold())
+            VStack(spacing: 20) {
+                WakeSunrise(size: 76)
+                    .padding(.top, 8)
+                VStack(spacing: 6) {
+                    Text("Good morning.")
+                        .font(.largeTitle.bold())
+                    Text("One little game, then you're on your way.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
                 if let session = store.wakeSession {
                     if let game = session.game, session.state == .answering {
-                        DailyWakeGameView(game: game, submit: store.submitGame)
+                        WakeCard {
+                            DailyWakeGameView(game: game, submit: store.submitGame)
+                        }
                     } else if session.state == .memorizing {
                         Text("Remember these symbols, in order.").multilineTextAlignment(.center)
                         HStack(spacing: 18) {
@@ -47,13 +57,16 @@ struct PuzzleView: View {
                     }
                 }
                 Text(store.status).font(.footnote).multilineTextAlignment(.center).foregroundStyle(.secondary)
-                Button("Back to alarm · keep reminders") { store.showPuzzle = false }.buttonStyle(.bordered)
-            }.padding(24)
-        }.background(Color(red: 0.035, green: 0.055, blue: 0.09))
+                Button("Back to alarm · keep reminders") { store.showPuzzle = false }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+            }.padding(.horizontal, 20).padding(.bottom, 24)
+        }.background(WakeBackdrop())
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) {
                 Button("Emergency stop · cancel all alarms", role: .destructive) { store.cancelAll() }
-                    .buttonStyle(.bordered).frame(maxWidth: .infinity).padding(12)
+                    .buttonStyle(.bordered).controlSize(.large)
+                    .frame(maxWidth: .infinity).padding(12)
                     .background(.ultraThinMaterial)
             }
     }
@@ -71,8 +84,11 @@ private struct DailyWakeGameView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Text(game.title).font(.title2.bold())
-            Text(game.instructions).font(.subheadline).multilineTextAlignment(.center)
+            VStack(spacing: 6) {
+                Text(game.title).font(.title2.bold())
+                Text(game.instructions).font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }.frame(maxWidth: .infinity)
             switch game.kind {
             case .word: wordGame
             case .groups: groupGame
@@ -82,15 +98,25 @@ private struct DailyWakeGameView: View {
                 Text(game.feedback)
                     .font(.subheadline.weight(.medium))
                     .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(12)
+                    .background(WakePalette.lavender.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("puzzleFeedback")
             }
             Button { submit(.hint) } label: { Label("Give me a hint", systemImage: "lightbulb") }
                 .buttonStyle(.bordered)
             Text("No time limit or lost lives. Your progress is saved.")
                 .font(.caption).foregroundStyle(.secondary)
+        }.onChange(of: game.guesses) { _, _ in
+            // Clear only after the guess has actually been saved. Invalid input
+            // and persistence failures remain available for correction.
+            guess = ""
         }.onChange(of: game.crosswordAnswers) { _, _ in
             crosswordInput = ""
             selectedClueID = nil
+        }.onChange(of: game.solvedGroupIDs) { _, _ in
+            // Keep rejected groups and failed saves selected for correction.
+            selection.removeAll()
         }
     }
 
@@ -100,22 +126,24 @@ private struct DailyWakeGameView: View {
                 wordRow(word, results: WakeGame.letterFeedback(guess: word, answer: game.wordAnswer))
             }
             wordRow(guess.uppercased(), results: [])
-            HStack {
+            HStack(spacing: 10) {
                 TextField("Five letters", text: $guess)
                     .textInputAutocapitalization(.characters).autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder).submitLabel(.go)
                     .accessibilityLabel("Five-letter guess")
                     .onSubmit(submitWord)
-                Button("Guess", action: submitWord).buttonStyle(.borderedProminent)
+                Button("Guess", action: submitWord)
+                    .buttonStyle(.borderedProminent).controlSize(.large)
             }
-            Text("Green = right spot · Yellow = elsewhere · Gray = absent")
-                .font(.caption2).foregroundStyle(.secondary)
+            Text("● Right spot   ◐ Elsewhere   − No match left")
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .accessibilityLabel("Filled circle: right spot. Half circle: elsewhere. Dash: no unmatched occurrence left in the answer.")
         }
     }
 
     private func submitWord() {
         submit(.guess(guess))
-        guess = ""
     }
 
     private func wordRow(_ word: String, results: [WakeLetterResult]) -> some View {
@@ -124,12 +152,27 @@ private struct DailyWakeGameView: View {
             ForEach(0..<5) { index in
                 let result = results.indices.contains(index) ? results[index] : nil
                 let letter = letters.indices.contains(index) ? String(letters[index]) : ""
-                Text(letter).font(.title2.bold().monospaced()).frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                VStack(spacing: 1) {
+                    Text(letter.isEmpty ? " " : letter).font(.title2.bold().monospaced())
+                    if let result {
+                        Text(letterMark(result)).font(.caption2.bold()).accessibilityHidden(true)
+                    }
+                }
+                    .frame(maxWidth: .infinity, minHeight: 56)
                     .foregroundStyle(result == .exact || result == .present ? Color.black : Color.white)
-                    .background(letterColor(result), in: RoundedRectangle(cornerRadius: 8))
+                    .background(letterColor(result), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(result == nil ? 0.16 : 0)))
+                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel(letterAccessibility(letter, result: result, position: index + 1))
             }
+        }
+    }
+
+    private func letterMark(_ result: WakeLetterResult) -> String {
+        switch result {
+        case .exact: return "●"
+        case .present: return "◐"
+        case .absent: return "−"
         }
     }
 
@@ -181,7 +224,6 @@ private struct DailyWakeGameView: View {
                 Button("Clear") { selection.removeAll() }.buttonStyle(.bordered)
                 Button("Check \(selection.count)/4") {
                     submit(.group(selection.sorted()))
-                    selection.removeAll()
                 }.buttonStyle(.borderedProminent).disabled(selection.count != 4)
             }
         }
