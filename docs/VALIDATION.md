@@ -46,3 +46,12 @@ GitHub Actions run [41589725282](https://github.com/aidandaly24/smart-wake/actio
 At source commit `a55d526ddaad9e15747d6aa7c8c470be880da57c`, [run 41589929242](https://github.com/aidandaly24/smart-wake/actions/runs/41589929242) executed all 64 XCTest methods with zero failures: 23 game tests, 32 planner tests, and nine legacy session tests. This supersedes the earlier “written, not executed” checkpoint above. The independent catalog and structural checks remain additional checks, not substitutes for these tests.
 
 The same run also completed both Xcode simulator build jobs successfully. No signing, device installation, live HealthKit access, gameplay UI automation or overnight reliability test is implied by those successes.
+
+
+## Alarm editing, early-play protection and design (2026-11-03 06:55 UTC)
+
+At source commit `5e05f6f6f89cfe9838010a0ac32418ba633774c6`, [run 41592747926](https://github.com/aidandaly24/smart-wake/actions/runs/41592747926) executed **74 XCTest methods with zero failures**: 23 game, 32 planner, 10 session-access and nine legacy session tests. The ten access tests cover pre-target rejection, exact-boundary access, restored state, clock rollback, malformed dates and terminal cleanup. Both the iPhone/embedded Watch and standalone Watch simulator build steps succeeded on the same source.
+
+The cloud source checks passed 98 structural/privacy assertions, all literal puzzle-catalog checks and whitespace validation. Independent review covered explicit replacement confirmation, preflight before cancellation, cancellation persistence and single-operation ownership, draft hydration, early-play protection at core/store/UI layers, and input preservation. The combined delta applied cleanly to the previous published source with all ten changed files matching byte-for-byte. Project, signing and Watch embedding settings were not part of the delta.
+
+The source now includes clearer active-alarm and draft-editing cards, original sunrise artwork, larger game tiles with non-color feedback, pinned emergency stops, and reduced-motion/transparency adaptations. **Interactive simulator QA is still pending at this checkpoint.** No physical-device installation, alarm delivery or overnight reliability is implied; the user's current testing direction is simulator-only.
