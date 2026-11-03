@@ -280,7 +280,8 @@ final class WakePlannerTests: XCTestCase {
                 XCTAssertEqual($0 as? WakePlanningError, .invalidRetryLimit)
             }
         }
-        for duration in [0, 24 * 3600, Double.nan, Double.infinity] {
+        let invalidDurations: [TimeInterval] = [0, 24 * 3600, .nan, .infinity]
+        for duration in invalidDurations {
             XCTAssertThrowsError(try WakePlanner(preferredSleepDuration: duration)) {
                 XCTAssertEqual($0 as? WakePlanningError, .invalidPreferredDuration)
             }
